@@ -1,11 +1,40 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import { computeAnalysis, buildProjectInsightsFromAnalysis } from "@/lib/analysis-engine";
+import {
+  computeAnalysis,
+  buildProjectInsightsFromAnalysis,
+} from "@/lib/analysis-engine";
 import { getErrorMessage, toPlainJson } from "@/lib/utils";
 import Project from "@/models/Project";
 import Analysis from "@/models/Analysis";
 
 export const runtime = "nodejs";
+
+function createFallbackGlobalSummary(
+  benchmarkProfile = "urban-slum-v1",
+  benchmarkLabel = "Urban Informal Settlement Benchmark v1"
+) {
+  return {
+    totalWards: 0,
+    criticalWards: 0,
+    highWards: 0,
+    moderateWards: 0,
+    stableWards: 0,
+    averagePriorityScore: null,
+    averageConfidence: null,
+    averageServiceScores: {
+      water: null,
+      sanitation: null,
+      electricity: null,
+      road: null,
+      drainage: null,
+      waste: null,
+    },
+    benchmarkProfile,
+    benchmarkLabel,
+    generatedAt: new Date().toISOString(),
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -31,6 +60,7 @@ export async function POST(request: Request) {
     }
 
     const normalizedRows = project.survey?.normalizedRows || [];
+
     if (!normalizedRows.length) {
       return NextResponse.json(
         { success: false, error: "Survey data is required before analysis" },
@@ -41,29 +71,52 @@ export async function POST(request: Request) {
     const computed = computeAnalysis({
       surveyRows: normalizedRows,
       boundaryGeoJson: project.boundary?.geojson || null,
-      benchmarkProfileId: project.benchmarkProfile,
+      benchmarkProfileId: String(project.benchmarkProfile || "urban-slum-v1"),
       satellite: project.satellite?.mode === "summary" ? project.satellite : null,
     });
 
-    const insights = buildProjectInsightsFromAnalysis(
-      {
-        name: project.name,
-        city: project.city,
-        state: project.state,
-      },
-      computed
+    const benchmarkProfile = String(
+      computed?.benchmarkProfile || project.benchmarkProfile || "urban-slum-v1"
     );
 
-    const analysis = await Analysis.create({
+    const benchmarkLabel = String(
+      computed?.benchmarkLabel || "Urban Informal Settlement Benchmark v1"
+    );
+
+    const globalSummary =
+      computed?.globalSummary || createFallbackGlobalSummary(benchmarkProfile, benchmarkLabel);
+
+    const wardScores = Array.isArray(computed?.wardScores) ? computed.wardScores : [];
+    const priorityInterventions = Array.isArray(computed?.priorityInterventions)
+      ? computed.priorityInterventions
+      : [];
+
+    const insights = buildProjectInsightsFromAnalysis(
+      {
+        name: String(project.name || "Untitled Project"),
+        city: String(project.city || ""),
+        state: String(project.state || ""),
+      },
+      {
+        globalSummary,
+        wardScores,
+        priorityInterventions,
+      }
+    );
+
+    const analysisPayload = {
       projectId: project._id,
-      projectName: project.name,
-      benchmarkProfile: computed.benchmarkProfile,
-      benchmarkLabel: computed.benchmarkLabel,
-      globalSummary: computed.globalSummary,
-      wardScores: computed.wardScores,
-      priorityInterventions: computed.priorityInterventions,
+      projectName: String(project.name || "Untitled Project"),
+      benchmarkProfile,
+      benchmarkLabel,
+      globalSummary,
+      wardScores,
+      priorityInterventions,
       insights,
-    });
+    };
+
+    const analysis = new Analysis(analysisPayload);
+    await analysis.save();
 
     project.currentAnalysisId = analysis._id;
     project.status = "analyzed";

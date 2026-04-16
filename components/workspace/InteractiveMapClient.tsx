@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   GeoJSON,
   MapContainer,
@@ -9,7 +9,7 @@ import {
   useMap,
 } from "react-leaflet";
 import L, { LatLngBoundsExpression } from "leaflet";
-import { AlertTriangle, MapPinned } from "lucide-react";
+import { AlertTriangle, Layers3, MapPinned } from "lucide-react";
 import { AnalysisPayload, GeoFeatureCollection } from "@/types/workspace";
 
 type InteractiveMapClientProps = {
@@ -19,13 +19,8 @@ type InteractiveMapClientProps = {
   onSelectWard: (wardName: string) => void;
 };
 
-function getScoreColor(score?: number) {
-  if (score === undefined || score === null) return "#4b5563";
-  if (score >= 65) return "#ef4444";
-  if (score >= 45) return "#f97316";
-  if (score >= 25) return "#f59e0b";
-  return "#10b981";
-}
+type MetricMode = "overall" | "water" | "sanitation" | "electricity" | "road";
+type BaseMode = "satellite" | "street";
 
 function getGeometryBounds(geojson: GeoFeatureCollection): LatLngBoundsExpression | null {
   const layer = L.geoJSON(geojson as any);
@@ -36,7 +31,6 @@ function getGeometryBounds(geojson: GeoFeatureCollection): LatLngBoundsExpressio
 
 function FitToGeoJson({ geojson }: { geojson: GeoFeatureCollection }) {
   const map = useMap();
-
   const bounds = useMemo(() => getGeometryBounds(geojson), [geojson]);
 
   if (bounds) {
@@ -49,16 +43,47 @@ function FitToGeoJson({ geojson }: { geojson: GeoFeatureCollection }) {
   return null;
 }
 
+function getColor(score?: number | null) {
+  if (score === null || score === undefined) return "#475569";
+  if (score >= 65) return "#ef4444";
+  if (score >= 45) return "#f97316";
+  if (score >= 25) return "#f59e0b";
+  return "#10b981";
+}
+
+function getMetricValue(ward: any, mode: MetricMode) {
+  if (!ward) return null;
+
+  if (mode === "overall") return ward.priorityScore ?? null;
+  if (mode === "water") return ward.gaps?.water ?? null;
+  if (mode === "sanitation") return ward.gaps?.sanitation ?? null;
+  if (mode === "electricity") return ward.gaps?.electricity ?? null;
+  if (mode === "road") return ward.gaps?.road ?? null;
+
+  return ward.priorityScore ?? null;
+}
+
+function getMetricLabel(mode: MetricMode) {
+  if (mode === "overall") return "Overall Priority";
+  if (mode === "water") return "Water Gap";
+  if (mode === "sanitation") return "Sanitation Gap";
+  if (mode === "electricity") return "Electricity Gap";
+  return "Road Gap";
+}
+
 export default function InteractiveMapClient({
   boundaryGeoJson,
   analysis,
   selectedWardName,
   onSelectWard,
 }: InteractiveMapClientProps) {
+  const [metricMode, setMetricMode] = useState<MetricMode>("overall");
+  const [baseMode, setBaseMode] = useState<BaseMode>("satellite");
+
   const wardMap = useMemo(() => {
     const map = new Map<string, any>();
     for (const ward of analysis?.wardScores || []) {
-      map.set(ward.wardName.toLowerCase(), ward);
+      map.set(String(ward.wardName || "").toLowerCase(), ward);
     }
     return map;
   }, [analysis]);
@@ -69,6 +94,7 @@ export default function InteractiveMapClient({
     if (!boundaryGeoJson) return [10.80, 78.69];
     const first = boundaryGeoJson.features?.[0];
     const coords = first?.geometry?.coordinates;
+
     const sample =
       Array.isArray(coords) &&
       Array.isArray(coords[0]) &&
@@ -96,8 +122,8 @@ export default function InteractiveMapClient({
           Boundary map not loaded
         </h3>
         <p className="mt-2 max-w-md text-sm leading-6 text-slate-300">
-          Upload a ward or cluster GeoJSON to render the choropleth map and clickable
-          service-deficit polygons.
+          Click <span className="font-semibold text-white">Demo Seed</span> or upload a
+          ward GeoJSON to render the choropleth map and clickable service-deficit polygons.
         </p>
       </div>
     );
@@ -113,16 +139,24 @@ export default function InteractiveMapClient({
       >
         <ZoomControl position="bottomright" />
 
-        <TileLayer
-          attribution='&copy; OpenStreetMap contributors &copy; Esri'
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        />
-
-        <TileLayer
-          attribution='&copy; OpenStreetMap contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          opacity={0.22}
-        />
+        {baseMode === "satellite" ? (
+          <>
+            <TileLayer
+              attribution='&copy; OpenStreetMap contributors &copy; Esri'
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            />
+            <TileLayer
+              attribution='&copy; OpenStreetMap contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              opacity={0.22}
+            />
+          </>
+        ) : (
+          <TileLayer
+            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+        )}
 
         {boundaryGeoJson ? <FitToGeoJson geojson={boundaryGeoJson} /> : null}
 
@@ -137,17 +171,17 @@ export default function InteractiveMapClient({
                 ""
             );
 
-            const match = wardMap.get(wardName.toLowerCase());
-            const score = match?.priorityScore;
+            const ward = wardMap.get(wardName.toLowerCase());
+            const score = getMetricValue(ward, metricMode);
             const isSelected =
               selectedWardName &&
               wardName.toLowerCase() === selectedWardName.toLowerCase();
 
             return {
-              color: isSelected ? "#ffffff" : "rgba(255,255,255,0.35)",
+              color: isSelected ? "#ffffff" : "rgba(255,255,255,0.32)",
               weight: isSelected ? 3 : 1.4,
-              fillColor: getScoreColor(score),
-              fillOpacity: isSelected ? 0.66 : 0.52,
+              fillColor: getColor(score),
+              fillOpacity: isSelected ? 0.72 : 0.58,
             };
           }}
           onEachFeature={(feature: any, layer) => {
@@ -159,11 +193,11 @@ export default function InteractiveMapClient({
                 "Unknown"
             );
 
-            const match = wardMap.get(wardName.toLowerCase());
+            const ward = wardMap.get(wardName.toLowerCase());
 
             layer.on({
               click: () => onSelectWard(wardName),
-              mouseover: () => layer.setStyle({ weight: 3, fillOpacity: 0.7 }),
+              mouseover: () => layer.setStyle({ weight: 3, fillOpacity: 0.78 }),
               mouseout: () => {
                 const isSelected =
                   selectedWardName &&
@@ -171,18 +205,20 @@ export default function InteractiveMapClient({
 
                 layer.setStyle({
                   weight: isSelected ? 3 : 1.4,
-                  fillOpacity: isSelected ? 0.66 : 0.52,
+                  fillOpacity: isSelected ? 0.72 : 0.58,
                 });
               },
             });
+
+            const metricValue = getMetricValue(ward, metricMode);
 
             layer.bindTooltip(
               `
                 <div class="map-tooltip-card">
                   <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${wardName}</div>
-                  <div style="font-size:12px;opacity:0.9;">Priority: ${match?.priorityScore ?? "--"}</div>
-                  <div style="font-size:12px;opacity:0.9;">Severity: ${match?.severity ?? "--"}</div>
-                  <div style="font-size:12px;opacity:0.9;">Rows: ${match?.rowCount ?? 0}</div>
+                  <div style="font-size:12px;opacity:0.92;">${getMetricLabel(metricMode)}: ${metricValue ?? "--"}</div>
+                  <div style="font-size:12px;opacity:0.92;">Severity: ${ward?.severity ?? "--"}</div>
+                  <div style="font-size:12px;opacity:0.92;">Rows: ${ward?.rowCount ?? 0}</div>
                 </div>
               `,
               {
@@ -195,7 +231,54 @@ export default function InteractiveMapClient({
         />
       </MapContainer>
 
-      <div className="pointer-events-none absolute left-4 top-4 z-[500] max-w-xs rounded-2xl border border-white/10 bg-slate-950/70 p-4 backdrop-blur-xl">
+      <div className="absolute left-4 top-4 z-[500] flex max-w-[calc(100%-32px)] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/75 p-3 backdrop-blur-xl">
+        <div className="mr-2 inline-flex items-center gap-2 text-xs font-medium text-white">
+          <Layers3 className="h-4 w-4 text-cyan-200" />
+          Layers
+        </div>
+
+        {(["overall", "water", "sanitation", "electricity", "road"] as MetricMode[]).map(
+          (mode) => (
+            <button
+              key={mode}
+              onClick={() => setMetricMode(mode)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                metricMode === mode
+                  ? "bg-cyan-400/18 text-cyan-100 ring-1 ring-cyan-300/25"
+                  : "bg-white/[0.05] text-slate-200 ring-1 ring-white/10"
+              }`}
+            >
+              {getMetricLabel(mode)}
+            </button>
+          )
+        )}
+
+        <div className="mx-1 h-6 w-px bg-white/10" />
+
+        <button
+          onClick={() => setBaseMode("satellite")}
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+            baseMode === "satellite"
+              ? "bg-emerald-400/18 text-emerald-100 ring-1 ring-emerald-300/25"
+              : "bg-white/[0.05] text-slate-200 ring-1 ring-white/10"
+          }`}
+        >
+          Satellite
+        </button>
+
+        <button
+          onClick={() => setBaseMode("street")}
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+            baseMode === "street"
+              ? "bg-emerald-400/18 text-emerald-100 ring-1 ring-emerald-300/25"
+              : "bg-white/[0.05] text-slate-200 ring-1 ring-white/10"
+          }`}
+        >
+          Street
+        </button>
+      </div>
+
+      <div className="pointer-events-none absolute bottom-4 left-4 z-[500] max-w-xs rounded-2xl border border-white/10 bg-slate-950/75 p-4 backdrop-blur-xl">
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-300" />
           <div>
@@ -218,6 +301,9 @@ export default function InteractiveMapClient({
                 Critical
               </div>
             </div>
+            <p className="mt-3 text-xs leading-5 text-slate-300">
+              Overlay now shows: <span className="font-semibold text-white">{getMetricLabel(metricMode)}</span>
+            </p>
           </div>
         </div>
       </div>

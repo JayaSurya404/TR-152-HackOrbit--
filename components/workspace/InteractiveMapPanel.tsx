@@ -7,7 +7,7 @@ const InteractiveMapClient = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-[520px] items-center justify-center rounded-[24px] border border-white/10 bg-slate-950/30 text-sm text-slate-300">
+      <div className="flex h-[560px] items-center justify-center rounded-[24px] border border-white/10 bg-slate-950/30 text-sm text-slate-300">
         Loading interactive map...
       </div>
     ),
@@ -30,9 +30,9 @@ export default function InteractiveMapPanel({
   return (
     <GlassCard
       title="Gap Intelligence Map"
-      subtitle="Click a ward polygon to inspect service deficits, priority score, and recommended actions."
+      subtitle="Annotated settlement map with gap overlays, 5 service layers, and base-map switching."
     >
-      <div className="h-[520px]">
+      <div className="h-[560px]">
         <InteractiveMapClient
           boundaryGeoJson={boundaryGeoJson || null}
           analysis={analysis}

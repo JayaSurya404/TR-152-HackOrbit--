@@ -75,18 +75,20 @@ export default function WorkspaceShell() {
     );
   }, [analysis, selectedWardName]);
 
-  const loadProjects = async (keepSelection = true) => {
+  const loadProjects = async (preferredProjectId?: string) => {
     try {
       setBusyKey("load-projects");
       const data = await api<ProjectsResponse>("/api/project");
-      setProjects(data.projects || []);
+      const nextProjects = data.projects || [];
+      setProjects(nextProjects);
 
-      if (!keepSelection && data.projects?.[0]?._id) {
-        setSelectedProjectId(data.projects[0]._id);
+      if (preferredProjectId) {
+        setSelectedProjectId(preferredProjectId);
+        return;
       }
 
-      if (!selectedProjectId && data.projects?.[0]?._id) {
-        setSelectedProjectId(data.projects[0]._id);
+      if (!selectedProjectId && nextProjects[0]?._id) {
+        setSelectedProjectId(nextProjects[0]._id);
       }
     } catch (err) {
       setError(formatError(err));
@@ -100,15 +102,19 @@ export default function WorkspaceShell() {
 
     try {
       setBusyKey("load-project");
-      const data = await api<ProjectDetailResponse>(`/api/project/${projectId}`);
-      setProject(data.project);
-      setAnalysis(data.currentAnalysis);
-      setReport(data.latestReport);
-      setInfo("Project loaded");
+      setError("");
 
-      const nextWard = data.currentAnalysis?.wardScores?.[0]?.wardName || "";
-      setSelectedWardName((prev) => prev || nextWard);
+      const data = await api<ProjectDetailResponse>(`/api/project/${projectId}`);
+
+      setProject(data.project || null);
+      setAnalysis(data.currentAnalysis || null);
+      setReport(data.latestReport || null);
       setSimulation(null);
+
+      const firstWard = data.currentAnalysis?.wardScores?.[0]?.wardName || "";
+      setSelectedWardName((prev) => prev || firstWard);
+
+      setInfo("Project loaded");
     } catch (err) {
       setError(formatError(err));
     } finally {
@@ -117,7 +123,7 @@ export default function WorkspaceShell() {
   };
 
   useEffect(() => {
-    loadProjects(false);
+    loadProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -154,7 +160,7 @@ export default function WorkspaceShell() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: `Tensor Settlement ${new Date().toLocaleTimeString()}`,
+          name: `InfraSight Project ${new Date().toLocaleTimeString()}`,
           city: "Tiruchirappalli",
           state: "Tamil Nadu",
           country: "India",
@@ -163,8 +169,8 @@ export default function WorkspaceShell() {
         }),
       });
 
-      await loadProjects();
-      setSelectedProjectId(created.project._id);
+      await loadProjects(created.project._id);
+      await loadProject(created.project._id);
       setInfo("Blank project created");
     } catch (err) {
       setError(formatError(err));
@@ -185,9 +191,10 @@ export default function WorkspaceShell() {
         method: "POST",
       });
 
-      await loadProjects();
+      await loadProjects(seeded.projectId);
+      await loadProject(seeded.projectId);
       setSelectedProjectId(seeded.projectId);
-      setInfo("Demo project seeded");
+      setInfo("Demo project seeded with map, analysis, and report");
     } catch (err) {
       setError(formatError(err));
     } finally {
@@ -252,14 +259,28 @@ export default function WorkspaceShell() {
       setError("");
       setBusyKey("upload-satellite");
 
-      const formData = new FormData();
-      formData.append("projectId", selectedProjectId);
-      formData.append("file", file);
+      if (file.name.toLowerCase().endsWith(".json")) {
+        const text = await file.text();
+        await api("/api/upload/satellite", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            projectId: selectedProjectId,
+            ...JSON.parse(text),
+          }),
+        });
+      } else {
+        const formData = new FormData();
+        formData.append("projectId", selectedProjectId);
+        formData.append("file", file);
 
-      await api("/api/upload/satellite", {
-        method: "POST",
-        body: formData,
-      });
+        await api("/api/upload/satellite", {
+          method: "POST",
+          body: formData,
+        });
+      }
 
       await loadProject(selectedProjectId);
       setInfo("Satellite payload uploaded");
@@ -367,7 +388,7 @@ export default function WorkspaceShell() {
           onSelectProject={setSelectedProjectId}
           onCreateBlankProject={createBlankProject}
           onCreateDemoProject={createDemoProject}
-          onRefreshProjects={() => loadProjects()}
+          onRefreshProjects={() => loadProjects(selectedProjectId)}
         />
 
         <ProjectSummaryBar project={project} analysis={analysis} />

@@ -13,6 +13,40 @@ import Report from "@/models/Report";
 
 export const runtime = "nodejs";
 
+function createFallbackGlobalSummary(
+  benchmarkProfile = "urban-slum-v1",
+  benchmarkLabel = "Urban Informal Settlement Benchmark v1"
+) {
+  return {
+    totalWards: 0,
+    criticalWards: 0,
+    highWards: 0,
+    moderateWards: 0,
+    stableWards: 0,
+    averagePriorityScore: null,
+    averageConfidence: null,
+    averageServiceScores: {
+      water: null,
+      sanitation: null,
+      electricity: null,
+      road: null,
+      drainage: null,
+      waste: null,
+    },
+    benchmarkProfile,
+    benchmarkLabel,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function getDemoProjectName() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `Tensor Demo Settlement ${hh}-${mm}-${ss}`;
+}
+
 export async function POST() {
   try {
     await connectDB();
@@ -21,46 +55,72 @@ export async function POST() {
 
     const project = await Project.create({
       ...seed.project,
+      name: getDemoProjectName(),
       survey: seed.survey,
       boundary: seed.boundary,
       satellite: seed.satellite,
+      status: "data_ready",
     });
 
     const computed = computeAnalysis({
       surveyRows: seed.survey.normalizedRows,
       boundaryGeoJson: seed.boundary.geojson as any,
-      benchmarkProfileId: project.benchmarkProfile,
+      benchmarkProfileId: String(project.benchmarkProfile || "urban-slum-v1"),
       satellite: seed.satellite as any,
     });
 
+    const benchmarkProfile = String(
+      computed?.benchmarkProfile || project.benchmarkProfile || "urban-slum-v1"
+    );
+
+    const benchmarkLabel = String(
+      computed?.benchmarkLabel || "Urban Informal Settlement Benchmark v1"
+    );
+
+    const globalSummary =
+      computed?.globalSummary ||
+      createFallbackGlobalSummary(benchmarkProfile, benchmarkLabel);
+
+    const wardScores = Array.isArray(computed?.wardScores)
+      ? computed.wardScores
+      : [];
+
+    const priorityInterventions = Array.isArray(computed?.priorityInterventions)
+      ? computed.priorityInterventions
+      : [];
+
     const insights = buildProjectInsightsFromAnalysis(
       {
-        name: project.name,
-        city: project.city,
-        state: project.state,
+        name: String(project.name || "Tensor Demo Settlement"),
+        city: String(project.city || ""),
+        state: String(project.state || ""),
       },
-      computed
+      {
+        globalSummary,
+        wardScores,
+        priorityInterventions,
+      }
     );
 
     const analysis = await Analysis.create({
       projectId: project._id,
-      projectName: project.name,
-      benchmarkProfile: computed.benchmarkProfile,
-      benchmarkLabel: computed.benchmarkLabel,
-      globalSummary: computed.globalSummary,
-      wardScores: computed.wardScores,
-      priorityInterventions: computed.priorityInterventions,
+      projectName: String(project.name || "Tensor Demo Settlement"),
+      benchmarkProfile,
+      benchmarkLabel,
+      globalSummary,
+      wardScores,
+      priorityInterventions,
       insights,
     });
 
     const reportPayload = buildReportPayload(
       {
         _id: String(project._id),
-        name: project.name,
-        city: project.city,
-        state: project.state,
-        country: project.country,
-        benchmarkProfile: project.benchmarkProfile,
+        name: String(project.name || "Tensor Demo Settlement"),
+        city: String(project.city || ""),
+        state: String(project.state || ""),
+        country: String(project.country || "India"),
+        benchmarkProfile,
       },
       {
         _id: String(analysis._id),
@@ -90,7 +150,10 @@ export async function POST() {
     });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
+      {
+        success: false,
+        error: getErrorMessage(error),
+      },
       { status: 500 }
     );
   }
