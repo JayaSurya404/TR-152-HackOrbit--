@@ -13,6 +13,8 @@ import WardDetailsPanel from "@/components/workspace/WardDetailsPanel";
 import PriorityInterventionsPanel from "@/components/workspace/PriorityInterventionsPanel";
 import InterventionSimulatorPanel from "@/components/workspace/InterventionSimulatorPanel";
 import ReportExportPanel from "@/components/workspace/ReportExportPanel";
+import BenchmarkPanel from "@/components/workspace/BenchmarkPanel";
+import EmptyWorkspaceState from "@/components/workspace/EmptyWorkspaceState";
 import {
   AnalysisPayload,
   ProjectDetail,
@@ -378,6 +380,8 @@ export default function WorkspaceShell() {
     }
   };
 
+  const showEmptyState = !projects.length && !selectedProjectId && !busyKey;
+
   return (
     <main className="min-h-screen px-4 py-4 md:px-6 md:py-6 xl:px-8">
       <div className="mx-auto max-w-[1680px] space-y-5">
@@ -410,57 +414,66 @@ export default function WorkspaceShell() {
           ) : null}
         </div>
 
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-          <div className="space-y-5 xl:col-span-3">
-            <GlassCard
-              title="Ingestion Controls"
-              subtitle="Upload data, analyze results, and keep the workspace synced."
-            >
-              <UploadDataPanel
-                projectId={selectedProjectId}
-                busyKey={busyKey}
-                onSurveyUpload={uploadSurvey}
-                onBoundaryUpload={uploadBoundary}
-                onSatelliteUpload={uploadSatellite}
-                onAnalyze={runAnalysis}
-                onGenerateReport={buildReport}
-                onRefreshCurrent={() => selectedProjectId && loadProject(selectedProjectId)}
+        {showEmptyState ? (
+          <EmptyWorkspaceState
+            onCreateBlankProject={createBlankProject}
+            onCreateDemoProject={createDemoProject}
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+            <div className="space-y-5 xl:col-span-3">
+              <GlassCard
+                title="Ingestion Controls"
+                subtitle="Upload data, analyze results, and keep the workspace synced."
+              >
+                <UploadDataPanel
+                  projectId={selectedProjectId}
+                  busyKey={busyKey}
+                  onSurveyUpload={uploadSurvey}
+                  onBoundaryUpload={uploadBoundary}
+                  onSatelliteUpload={uploadSatellite}
+                  onAnalyze={runAnalysis}
+                  onGenerateReport={buildReport}
+                  onRefreshCurrent={() => selectedProjectId && loadProject(selectedProjectId)}
+                />
+              </GlassCard>
+
+              <GlassCard
+                title="Readiness Checks"
+                subtitle="Judge-friendly proof that the pipeline is end-to-end."
+              >
+                <DataReadinessPanel project={project} analysis={analysis} />
+              </GlassCard>
+
+              <BenchmarkPanel project={project} analysis={analysis} />
+            </div>
+
+            <div className="space-y-5 xl:col-span-5">
+              <ScoreOverviewGrid analysis={analysis} />
+              <InteractiveMapPanel
+                boundaryGeoJson={project?.boundary?.geojson || null}
+                analysis={analysis}
+                selectedWardName={selectedWardName}
+                onSelectWard={(wardName) => {
+                  setSelectedWardName(wardName);
+                  setSimulation(null);
+                }}
               />
-            </GlassCard>
+            </div>
 
-            <GlassCard
-              title="Readiness Checks"
-              subtitle="Judge-friendly proof that the pipeline is end-to-end."
-            >
-              <DataReadinessPanel project={project} analysis={analysis} />
-            </GlassCard>
+            <div className="space-y-5 xl:col-span-4">
+              <WardDetailsPanel ward={selectedWard} analysis={analysis} />
+              <PriorityInterventionsPanel analysis={analysis} />
+              <InterventionSimulatorPanel
+                ward={selectedWard}
+                busyKey={busyKey}
+                simulation={simulation}
+                onSimulate={runSimulation}
+              />
+              <ReportExportPanel report={report} />
+            </div>
           </div>
-
-          <div className="space-y-5 xl:col-span-5">
-            <ScoreOverviewGrid analysis={analysis} />
-            <InteractiveMapPanel
-              boundaryGeoJson={project?.boundary?.geojson || null}
-              analysis={analysis}
-              selectedWardName={selectedWardName}
-              onSelectWard={(wardName) => {
-                setSelectedWardName(wardName);
-                setSimulation(null);
-              }}
-            />
-          </div>
-
-          <div className="space-y-5 xl:col-span-4">
-            <WardDetailsPanel ward={selectedWard} analysis={analysis} />
-            <PriorityInterventionsPanel analysis={analysis} />
-            <InterventionSimulatorPanel
-              ward={selectedWard}
-              busyKey={busyKey}
-              simulation={simulation}
-              onSimulate={runSimulation}
-            />
-            <ReportExportPanel report={report} />
-          </div>
-        </div>
+        )}
       </div>
     </main>
   );

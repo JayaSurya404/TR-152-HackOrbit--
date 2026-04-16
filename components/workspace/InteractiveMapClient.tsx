@@ -9,8 +9,10 @@ import {
   useMap,
 } from "react-leaflet";
 import L, { LatLngBoundsExpression } from "leaflet";
-import { AlertTriangle, Layers3, MapPinned } from "lucide-react";
+import { Layers3, MapPinned } from "lucide-react";
 import { AnalysisPayload, GeoFeatureCollection } from "@/types/workspace";
+import { MAP_LAYER_OPTIONS } from "@/lib/constants";
+import MapLegend from "@/components/workspace/MapLegend";
 
 type InteractiveMapClientProps = {
   boundaryGeoJson: GeoFeatureCollection | null;
@@ -64,11 +66,7 @@ function getMetricValue(ward: any, mode: MetricMode) {
 }
 
 function getMetricLabel(mode: MetricMode) {
-  if (mode === "overall") return "Overall Priority";
-  if (mode === "water") return "Water Gap";
-  if (mode === "sanitation") return "Sanitation Gap";
-  if (mode === "electricity") return "Electricity Gap";
-  return "Road Gap";
+  return MAP_LAYER_OPTIONS.find((item) => item.id === mode)?.label || "Overall Priority";
 }
 
 export default function InteractiveMapClient({
@@ -91,7 +89,7 @@ export default function InteractiveMapClient({
   const hasMap = Boolean(boundaryGeoJson?.features?.length);
 
   const center = useMemo<[number, number]>(() => {
-    if (!boundaryGeoJson) return [10.80, 78.69];
+    if (!boundaryGeoJson) return [10.8, 78.69];
     const first = boundaryGeoJson.features?.[0];
     const coords = first?.geometry?.coordinates;
 
@@ -111,7 +109,7 @@ export default function InteractiveMapClient({
       return [sample[1], sample[0]];
     }
 
-    return [10.80, 78.69];
+    return [10.8, 78.69];
   }, [boundaryGeoJson]);
 
   if (!hasMap) {
@@ -237,21 +235,19 @@ export default function InteractiveMapClient({
           Layers
         </div>
 
-        {(["overall", "water", "sanitation", "electricity", "road"] as MetricMode[]).map(
-          (mode) => (
-            <button
-              key={mode}
-              onClick={() => setMetricMode(mode)}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                metricMode === mode
-                  ? "bg-cyan-400/18 text-cyan-100 ring-1 ring-cyan-300/25"
-                  : "bg-white/[0.05] text-slate-200 ring-1 ring-white/10"
-              }`}
-            >
-              {getMetricLabel(mode)}
-            </button>
-          )
-        )}
+        {MAP_LAYER_OPTIONS.map((mode) => (
+          <button
+            key={mode.id}
+            onClick={() => setMetricMode(mode.id as MetricMode)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+              metricMode === mode.id
+                ? "bg-cyan-400/18 text-cyan-100 ring-1 ring-cyan-300/25"
+                : "bg-white/[0.05] text-slate-200 ring-1 ring-white/10"
+            }`}
+          >
+            {mode.label}
+          </button>
+        ))}
 
         <div className="mx-1 h-6 w-px bg-white/10" />
 
@@ -278,35 +274,7 @@ export default function InteractiveMapClient({
         </button>
       </div>
 
-      <div className="pointer-events-none absolute bottom-4 left-4 z-[500] max-w-xs rounded-2xl border border-white/10 bg-slate-950/75 p-4 backdrop-blur-xl">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-300" />
-          <div>
-            <p className="text-sm font-semibold text-white">Severity Legend</p>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-emerald-500" />
-                Stable
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-amber-500" />
-                Moderate
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-orange-500" />
-                High
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-rose-500" />
-                Critical
-              </div>
-            </div>
-            <p className="mt-3 text-xs leading-5 text-slate-300">
-              Overlay now shows: <span className="font-semibold text-white">{getMetricLabel(metricMode)}</span>
-            </p>
-          </div>
-        </div>
-      </div>
+      <MapLegend metricLabel={getMetricLabel(metricMode)} baseMode={baseMode} />
     </div>
   );
 }
