@@ -1,81 +1,62 @@
 "use client";
 
-import { useMemo } from "react";
-import GlassCard from "@/components/ui/GlassCard";
-import { ReportPayload } from "@/types/workspace";
+import type { ReportPayload } from "@/types/workspace";
 
-type ReportExportPanelProps = {
+type Props = {
   report: ReportPayload | null;
+  projectId?: string;
 };
 
-export default function ReportExportPanel({
-  report,
-}: ReportExportPanelProps) {
-  const reportJson = useMemo(() => {
-    if (!report) return "";
-    return JSON.stringify(report, null, 2);
-  }, [report]);
+function formatDate(value?: string) {
+  if (!value) return "Not generated yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
 
-  const downloadReport = () => {
-    if (!reportJson || !report) return;
+export default function ReportExportPanel({ report, projectId }: Props) {
+  const title = report?.title || "Infrastructure Gap Assessment";
+  const summary =
+    report?.executiveSummary ||
+    "The AI-generated PDF report will summarize infrastructure gaps, ward priorities, and recommended actions based on the latest project analysis.";
 
-    const blob = new Blob([reportJson], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${report.title.replace(/\s+/g, "-").toLowerCase()}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const copyReport = async () => {
-    if (!reportJson) return;
-    await navigator.clipboard.writeText(reportJson);
-  };
+  const generatedAt =
+    report?.generatedAt ||
+    (report as any)?.createdAt ||
+    (report as any)?.updatedAt ||
+    "";
 
   return (
-    <GlassCard
-      title="Report Export"
-      subtitle="Structured output for demo, handoff, or next-step PDF generation."
-    >
-      {report ? (
-        <div className="space-y-4">
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
-            <h3 className="text-base font-semibold text-white">{report.title}</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              {report.executiveSummary}
-            </p>
-            <p className="mt-3 text-xs text-slate-400">
-              Generated {new Date(report.generatedAt).toLocaleString()}
-            </p>
-          </div>
+    <section className="rounded-[28px] border border-white/10 bg-white/[0.06] p-5 backdrop-blur-2xl">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-white">Report Export</h3>
+        <p className="mt-1 text-sm text-slate-300">
+          AI-generated PDF report for demo, handoff, and final submission.
+        </p>
+      </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={copyReport}
-              className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
-            >
-              Copy JSON
-            </button>
-            <button
-              onClick={downloadReport}
-              className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:scale-[1.01]"
-            >
-              Download JSON
-            </button>
-          </div>
+      <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5">
+        <h4 className="text-xl font-semibold leading-9 text-white">{title}</h4>
 
-          <div className="code-scroll rounded-[24px] border border-white/10 bg-slate-950/40 p-4">
-            <pre className="whitespace-pre-wrap break-words text-xs leading-6 text-slate-200">
-              {reportJson}
-            </pre>
-          </div>
-        </div>
+        <p className="mt-4 text-base leading-9 text-slate-200">{summary}</p>
+
+        <p className="mt-5 text-sm text-slate-400">
+          Generated {formatDate(generatedAt)}
+        </p>
+      </div>
+
+      {projectId ? (
+        <a
+          href={`/api/report/pdf/${projectId}`}
+          className="mt-5 inline-flex w-full items-center justify-center rounded-[22px] border border-fuchsia-300/20 bg-fuchsia-500/10 px-5 py-4 text-base font-semibold text-fuchsia-100 backdrop-blur-xl transition hover:bg-fuchsia-500/20"
+        >
+          Download PDF
+        </a>
       ) : (
-        <div className="rounded-[24px] border border-dashed border-white/15 bg-white/[0.03] p-6 text-sm text-slate-300">
-          Report not generated yet. Run analysis, then click Build Report.
+        <div className="mt-5 rounded-[22px] border border-white/10 bg-white/[0.04] px-5 py-4 text-center text-sm text-slate-400">
+          Select a project to download the PDF report.
         </div>
       )}
-    </GlassCard>
+    </section>
   );
 }

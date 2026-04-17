@@ -515,7 +515,14 @@ export default function WorkspaceDetailsPage() {
               simulation={simulation}
               onSimulate={runSimulation}
             />
-            <ReportExportPanel report={report} />
+<ReportExportPanel report={report} projectId={selectedProjectId} />            {selectedProjectId ? (
+  <a
+    href={`/api/report/pdf/${selectedProjectId}`}
+    className="inline-flex w-full items-center justify-center rounded-[20px] border border-fuchsia-300/20 bg-fuchsia-500/10 px-4 py-3 text-sm font-semibold text-fuchsia-100 backdrop-blur-xl transition hover:bg-fuchsia-500/20"
+  >
+    Download AI PDF Report
+  </a>
+) : null}
           </div>
         </div>
       </div>
