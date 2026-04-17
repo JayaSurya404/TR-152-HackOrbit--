@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import WorkspaceDetailsPage from "@/components/workspace/details/page";
+import WorkspaceDetailsPage from "../../../components/workspace/details/page";
 
 function DetailsFallback() {
   return (
