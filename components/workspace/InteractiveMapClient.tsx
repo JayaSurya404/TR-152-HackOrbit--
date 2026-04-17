@@ -32,6 +32,10 @@ function getGeometryBounds(geojson: GeoFeatureCollection): LatLngBoundsExpressio
   return bounds;
 }
 
+function isPathLayer(layer: L.Layer): layer is L.Path {
+  return layer instanceof L.Path;
+}
+
 function FitPriority({
   searchGeoJson,
   projectGeoJson,
@@ -187,26 +191,25 @@ export default function InteractiveMapClient({
               const ward = wardMap.get(featureName.toLowerCase());
 
               layer.on({
-                click: () => onSelectWard(featureName),
-                mouseover: () => layer.setStyle({ weight: 3.5, fillOpacity: 0.84 }),
-                mouseout: () => {
-                  const isSelectedByWard =
-                    selectedWardName &&
-                    featureName.toLowerCase() === selectedWardName.toLowerCase();
+  click: () => onSelectWard(featureName),
+  mouseover: () => {
+    if (isPathLayer(layer)) {
+      layer.setStyle({ weight: 3.5, fillOpacity: 0.84 });
+    }
+  },
+  mouseout: () => {
+    const isSelectedByWard =
+      selectedWardName &&
+      featureName &&
+      selectedWardName.toLowerCase() === featureName.toLowerCase();
 
-                  const isSelectedByFilter =
-                    selectedUnitName &&
-                    featureName.toLowerCase() === selectedUnitName.toLowerCase();
-
-                  const isFocused = isSelectedByWard || isSelectedByFilter;
-                  const faded = Boolean(selectedUnitName) && !isFocused;
-
-                  layer.setStyle({
-                    weight: isFocused ? 3.5 : 1.2,
-                    fillOpacity: faded ? 0.05 : isFocused ? 0.82 : 0.48,
-                  });
-                },
-              });
+    if (isPathLayer(layer)) {
+      layer.setStyle(
+        getFeatureStyle(feature, Boolean(isSelectedByWard))
+      );
+    }
+  },
+});
 
               const metricValue = getMetricValue(ward, metricMode);
 
