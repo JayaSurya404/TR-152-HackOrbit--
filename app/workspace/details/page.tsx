@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import DetailsPage from "@/components/workspace/details/page";
+import WorkspaceDetailsPage from "@/components/workspace/details/page";
 
 function DetailsFallback() {
   return (
-    <main className="relative min-h-screen w-full overflow-hidden bg-slate-950">
-      <div className="absolute inset-0 flex items-center justify-center">
+    <main className="min-h-screen w-full bg-slate-950">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm text-white backdrop-blur-xl">
           Loading workspace details...
         </div>
@@ -16,7 +16,7 @@ function DetailsFallback() {
 export default function WorkspaceDetailsRoutePage() {
   return (
     <Suspense fallback={<DetailsFallback />}>
-      <DetailsPage />
+      <WorkspaceDetailsPage />
     </Suspense>
   );
 }
