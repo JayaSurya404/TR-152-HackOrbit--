@@ -132,15 +132,32 @@ export default function WardDetailsPanel({
             <p className="text-sm font-semibold text-white">Top Deficits</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {ward.topDeficits?.length ? (
-                ward.topDeficits.map((item) => (
-                  <span
-                    key={`${ward.wardName}-${item.metric}`}
-                    className="rounded-full border border-orange-300/15 bg-orange-400/10 px-3 py-1.5 text-xs text-orange-100"
-                  >
-                    {item.metric}: {item.gap}
-                  </span>
-                ))
-              ) : (
+  ward.topDeficits.map((item: any, index: number) => {
+    const metricKey =
+      typeof item === "string"
+        ? item
+        : item?.metric || item?.key || item?.label || `metric-${index}`;
+
+    const metricLabel =
+      typeof item === "string"
+        ? item
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (char: string) => char.toUpperCase())
+        : item?.label ||
+          item?.metric ||
+          item?.key ||
+          `Metric ${index + 1}`;
+
+    return (
+      <span
+        key={`${ward.wardName}-${metricKey}-${index}`}
+        className="rounded-full border border-orange-300/20 bg-orange-400/10 px-3 py-1 text-xs font-medium text-orange-100"
+      >
+        {metricLabel}
+      </span>
+    );
+  })
+) : (
                 <span className="text-sm text-slate-300">No deficit data</span>
               )}
             </div>
