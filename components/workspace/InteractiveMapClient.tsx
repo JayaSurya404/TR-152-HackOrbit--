@@ -14,15 +14,6 @@ import { Layers3 } from "lucide-react";
 import type { AnalysisPayload, GeoFeatureCollection } from "@/types/workspace";
 import { MAP_LAYER_OPTIONS } from "@/lib/constants";
 
-type InteractiveMapClientProps = {
-  boundaryGeoJson: GeoFeatureCollection | null;
-  analysis: AnalysisPayload | null;
-  selectedWardName: string;
-  onSelectWard: (wardName: string) => void;
-  searchHighlightGeoJson: GeoFeatureCollection | null;
-  selectedUnitName: string;
-};
-
 type MetricMode =
   | "overall"
   | "water"
@@ -31,6 +22,17 @@ type MetricMode =
   | "road";
 
 type BaseMode = "satellite" | "street";
+type AdminScope = "ward" | "village" | "overall";
+
+type InteractiveMapClientProps = {
+  boundaryGeoJson: GeoFeatureCollection | null;
+  analysis: AnalysisPayload | null;
+  selectedWardName: string;
+  onSelectWard: (wardName: string) => void;
+  searchHighlightGeoJson: GeoFeatureCollection | null;
+  selectedUnitName: string;
+  adminScope?: AdminScope;
+};
 
 function getGeometryBounds(
   geojson: GeoFeatureCollection
@@ -57,8 +59,7 @@ function FitPriority({
 
   const bounds = useMemo(() => {
     if (searchGeoJson?.features?.length) return getGeometryBounds(searchGeoJson);
-    if (projectGeoJson?.features?.length)
-      return getGeometryBounds(projectGeoJson);
+    if (projectGeoJson?.features?.length) return getGeometryBounds(projectGeoJson);
     return null;
   }, [searchGeoJson, projectGeoJson]);
 
@@ -118,7 +119,10 @@ export default function InteractiveMapClient({
   onSelectWard,
   searchHighlightGeoJson,
   selectedUnitName,
+  adminScope,
 }: InteractiveMapClientProps) {
+  void adminScope;
+
   const geoJsonRef = useRef<L.GeoJSON<any> | null>(null);
 
   const [metricMode, setMetricMode] = useState<MetricMode>("overall");
@@ -171,7 +175,7 @@ export default function InteractiveMapClient({
         {baseMode === "satellite" ? (
           <>
             <TileLayer
-              attribution='&copy; OpenStreetMap contributors &copy; Esri'
+              attribution="&copy; OpenStreetMap contributors &copy; Esri"
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             />
             <TileLayer
@@ -207,9 +211,7 @@ export default function InteractiveMapClient({
 
         {boundaryGeoJson?.features?.length ? (
           <GeoJSON
-            key={`boundary-${metricMode}-${selectedWardName || "none"}-${
-              selectedUnitName || "none"
-            }`}
+            key={`boundary-${metricMode}-${selectedWardName || "none"}-${selectedUnitName || "none"}`}
             ref={geoJsonRef}
             data={boundaryGeoJson as any}
             style={(feature: any) => getFeatureStyle(feature)}
@@ -246,15 +248,9 @@ export default function InteractiveMapClient({
                   `
                     <div class="map-tooltip-card">
                       <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${featureName}</div>
-                      <div style="font-size:12px;opacity:0.92;">${getMetricLabel(
-                        metricMode
-                      )}: ${metricValue ?? "--"}</div>
-                      <div style="font-size:12px;opacity:0.92;">Severity: ${
-                        ward?.severity ?? "--"
-                      }</div>
-                      <div style="font-size:12px;opacity:0.92;">Rows: ${
-                        ward?.rowCount ?? 0
-                      }</div>
+                      <div style="font-size:12px;opacity:0.92;">${getMetricLabel(metricMode)}: ${metricValue ?? "--"}</div>
+                      <div style="font-size:12px;opacity:0.92;">Severity: ${ward?.severity ?? "--"}</div>
+                      <div style="font-size:12px;opacity:0.92;">Rows: ${ward?.rowCount ?? 0}</div>
                     </div>
                   `,
                   {
