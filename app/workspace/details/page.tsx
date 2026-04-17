@@ -3,11 +3,13 @@ import DetailsPage from "@/components/workspace/details/page";
 
 function DetailsFallback() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 text-white">
-      <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm">
-        Loading workspace details...
+    <main className="relative min-h-screen w-full overflow-hidden bg-slate-950">
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm text-white backdrop-blur-xl">
+          Loading workspace details...
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
 
