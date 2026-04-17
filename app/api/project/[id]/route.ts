@@ -47,13 +47,42 @@ export async function GET(_request: Request, context?: RouteContext) {
       );
     }
 
-    const currentAnalysis = project.currentAnalysisId
-      ? await Analysis.findById(project.currentAnalysisId).lean()
-      : null;
+    let currentAnalysis = null;
+    let latestReport = null;
 
-    const latestReport = project.latestReportId
-      ? await Report.findById(project.latestReportId).lean()
-      : null;
+    if (project.currentAnalysisId) {
+      currentAnalysis = await Analysis.findById(project.currentAnalysisId).lean();
+    }
+
+    if (!currentAnalysis) {
+      currentAnalysis = await Analysis.findOne({ projectId: id })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    if (project.latestReportId) {
+      latestReport = await Report.findById(project.latestReportId).lean();
+    }
+
+    if (!latestReport) {
+      latestReport = await Report.findOne({ projectId: id })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    const refUpdates: Record<string, unknown> = {};
+
+    if (!project.currentAnalysisId && currentAnalysis?._id) {
+      refUpdates.currentAnalysisId = currentAnalysis._id;
+    }
+
+    if (!project.latestReportId && latestReport?._id) {
+      refUpdates.latestReportId = latestReport._id;
+    }
+
+    if (Object.keys(refUpdates).length > 0) {
+      await Project.updateOne({ _id: id }, { $set: refUpdates });
+    }
 
     return NextResponse.json({
       success: true,
@@ -62,8 +91,14 @@ export async function GET(_request: Request, context?: RouteContext) {
         _id: String(project._id),
         currentAnalysisId: project.currentAnalysisId
           ? String(project.currentAnalysisId)
+          : currentAnalysis?._id
+          ? String(currentAnalysis._id)
           : null,
-        latestReportId: project.latestReportId ? String(project.latestReportId) : null,
+        latestReportId: project.latestReportId
+          ? String(project.latestReportId)
+          : latestReport?._id
+          ? String(latestReport._id)
+          : null,
         survey: project.survey || null,
         boundary: project.boundary || null,
         satellite: project.satellite || null,
@@ -106,6 +141,9 @@ export async function PATCH(request: Request, context?: RouteContext) {
     if (typeof body?.track === "string") updates.track = body.track;
     if (typeof body?.benchmarkProfile === "string") {
       updates.benchmarkProfile = body.benchmarkProfile;
+    }
+    if (typeof body?.status === "string") {
+      updates.status = body.status;
     }
 
     const project = await Project.findByIdAndUpdate(

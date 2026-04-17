@@ -1,27 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import GlassCard from "@/components/ui/GlassCard";
-import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
-import ProjectSummaryBar from "@/components/workspace/ProjectSummaryBar";
-import UploadDataPanel from "@/components/workspace/UploadDataPanel";
-import DataReadinessPanel from "@/components/workspace/DataReadinessPanel";
-import ScoreOverviewGrid from "@/components/workspace/ScoreOverviewGrid";
+import { useSearchParams } from "next/navigation";
+import LocationSearchPanel from "@/components/workspace/LocationSearchPanel";
+import WorkspaceDock from "@/components/workspace/WorkspaceDock";
 import InteractiveMapPanel from "@/components/workspace/InteractiveMapPanel";
-import WardDetailsPanel from "@/components/workspace/WardDetailsPanel";
-import PriorityInterventionsPanel from "@/components/workspace/PriorityInterventionsPanel";
-import InterventionSimulatorPanel from "@/components/workspace/InterventionSimulatorPanel";
-import ReportExportPanel from "@/components/workspace/ReportExportPanel";
-import BenchmarkPanel from "@/components/workspace/BenchmarkPanel";
-import EmptyWorkspaceState from "@/components/workspace/EmptyWorkspaceState";
 import {
   AnalysisPayload,
   ProjectDetail,
   ProjectSummary,
   ReportPayload,
-  SimulationPayload,
-  WardScore,
 } from "@/types/workspace";
 
 type ProjectsResponse = {
@@ -34,6 +22,13 @@ type ProjectDetailResponse = {
   project: ProjectDetail;
   currentAnalysis: AnalysisPayload | null;
   latestReport: ReportPayload | null;
+};
+
+type SearchResult = {
+  id: string;
+  label: string;
+  geojson: any;
+  address?: Record<string, string>;
 };
 
 function formatError(error: unknown) {
@@ -56,32 +51,89 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+function normalizeText(value?: string) {
+  return (value || "").trim().toLowerCase();
+}
+
+function isTrichyText(value?: string) {
+  const text = normalizeText(value);
+  return (
+    text.includes("tiruchirappalli") ||
+    text.includes("trichy") ||
+    text.includes("tiruchy")
+  );
+}
+
 export default function WorkspaceShell() {
+  const searchParams = useSearchParams();
+
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisPayload | null>(null);
-  const [report, setReport] = useState<ReportPayload | null>(null);
+
   const [selectedWardName, setSelectedWardName] = useState("");
-  const [simulation, setSimulation] = useState<SimulationPayload | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [selectedSearchResultId, setSelectedSearchResultId] = useState("");
+  const [selectedUnitName, setSelectedUnitName] = useState("");
+
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [info, setInfo] = useState("Ready");
 
-  const selectedWard = useMemo<WardScore | null>(() => {
-    if (!analysis?.wardScores?.length) return null;
-    return (
-      analysis.wardScores.find(
-        (item) => item.wardName.toLowerCase() === selectedWardName.toLowerCase()
-      ) || analysis.wardScores[0]
+  const selectedSearchResult = useMemo(
+    () => searchResults.find((item) => item.id === selectedSearchResultId) || null,
+    [searchResults, selectedSearchResultId]
+  );
+
+  const unitOptions = useMemo(() => {
+    const features = project?.boundary?.geojson?.features || [];
+    const names = features
+      .map((feature) =>
+        String(
+          feature.properties?.__wardName ||
+            feature.properties?.ward_name ||
+            feature.properties?.ward ||
+            feature.properties?.name ||
+            ""
+        )
+      )
+      .filter(Boolean);
+
+    return Array.from(new Set(names));
+  }, [project]);
+
+  const usingLocalTrichyCoverage = useMemo(() => {
+    return Boolean(
+      project?.boundary?.geojson &&
+        isTrichyText(searchQuery) &&
+        isTrichyText(project?.city)
     );
-  }, [analysis, selectedWardName]);
+  }, [project, searchQuery]);
+
+  const effectiveSearchHighlightGeoJson = useMemo(() => {
+    if (usingLocalTrichyCoverage) {
+      return project?.boundary?.geojson || null;
+    }
+
+    return selectedSearchResult?.geojson || null;
+  }, [usingLocalTrichyCoverage, project, selectedSearchResult]);
+
+  const selectedBoundaryLabel = useMemo(() => {
+    if (usingLocalTrichyCoverage) {
+      return "Tiruchirappalli full demo coverage";
+    }
+
+    return selectedSearchResult?.label || "";
+  }, [usingLocalTrichyCoverage, selectedSearchResult]);
 
   const loadProjects = async (preferredProjectId?: string) => {
     try {
       setBusyKey("load-projects");
+
       const data = await api<ProjectsResponse>("/api/project");
       const nextProjects = data.projects || [];
+
       setProjects(nextProjects);
 
       if (preferredProjectId) {
@@ -110,13 +162,47 @@ export default function WorkspaceShell() {
 
       setProject(data.project || null);
       setAnalysis(data.currentAnalysis || null);
-      setReport(data.latestReport || null);
-      setSimulation(null);
 
       const firstWard = data.currentAnalysis?.wardScores?.[0]?.wardName || "";
       setSelectedWardName((prev) => prev || firstWard);
+    } catch (err) {
+      setError(formatError(err));
+    } finally {
+      setBusyKey(null);
+    }
+  };
 
-      setInfo("Project loaded");
+  const searchLocation = async () => {
+    if (!searchQuery.trim()) return;
+
+    try {
+      setBusyKey("search-location");
+      setError("");
+
+      if (isTrichyText(searchQuery) && project?.boundary?.geojson) {
+        setSearchResults([
+          {
+            id: "local-trichy-demo",
+            label: "Tiruchirappalli full demo coverage",
+            geojson: project.boundary.geojson,
+          },
+        ]);
+        setSelectedSearchResultId("local-trichy-demo");
+        return;
+      }
+
+      const response = await api<{
+        success: boolean;
+        results: SearchResult[];
+      }>(`/api/location/search?q=${encodeURIComponent(searchQuery)}`);
+
+      const results = response.results || [];
+      setSearchResults(results);
+
+      const firstWithGeojson =
+        results.find((item) => item.geojson && item.label) || results[0] || null;
+
+      setSelectedSearchResultId(firstWithGeojson?.id || "");
     } catch (err) {
       setError(formatError(err));
     } finally {
@@ -125,7 +211,8 @@ export default function WorkspaceShell() {
   };
 
   useEffect(() => {
-    loadProjects();
+    const preferred = searchParams.get("projectId") || undefined;
+    loadProjects(preferred);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -151,330 +238,43 @@ export default function WorkspaceShell() {
     }
   }, [analysis, selectedWardName]);
 
-  const createBlankProject = async () => {
-    try {
-      setError("");
-      setBusyKey("create-project");
-
-      const created = await api<{ success: boolean; project: ProjectSummary }>("/api/project", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: `InfraSight Project ${new Date().toLocaleTimeString()}`,
-          city: "Tiruchirappalli",
-          state: "Tamil Nadu",
-          country: "India",
-          track: "societal",
-          benchmarkProfile: "urban-slum-v1",
-        }),
-      });
-
-      await loadProjects(created.project._id);
-      await loadProject(created.project._id);
-      setInfo("Blank project created");
-    } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const createDemoProject = async () => {
-    try {
-      setError("");
-      setBusyKey("demo-seed");
-
-      const seeded = await api<{
-        success: boolean;
-        projectId: string;
-      }>("/api/demo/seed", {
-        method: "POST",
-      });
-
-      await loadProjects(seeded.projectId);
-      await loadProject(seeded.projectId);
-      setSelectedProjectId(seeded.projectId);
-      setInfo("Demo project seeded with map, analysis, and report");
-    } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const uploadSurvey = async (file: File) => {
-    if (!selectedProjectId) return;
-
-    try {
-      setError("");
-      setBusyKey("upload-survey");
-
-      const formData = new FormData();
-      formData.append("projectId", selectedProjectId);
-      formData.append("file", file);
-
-      await api("/api/upload/survey", {
-        method: "POST",
-        body: formData,
-      });
-
-      await loadProject(selectedProjectId);
-      setInfo("Survey CSV uploaded");
-    } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const uploadBoundary = async (file: File) => {
-    if (!selectedProjectId) return;
-
-    try {
-      setError("");
-      setBusyKey("upload-boundary");
-
-      const formData = new FormData();
-      formData.append("projectId", selectedProjectId);
-      formData.append("file", file);
-
-      await api("/api/upload/boundary", {
-        method: "POST",
-        body: formData,
-      });
-
-      await loadProject(selectedProjectId);
-      setInfo("Boundary GeoJSON uploaded");
-    } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const uploadSatellite = async (file: File) => {
-    if (!selectedProjectId) return;
-
-    try {
-      setError("");
-      setBusyKey("upload-satellite");
-
-      if (file.name.toLowerCase().endsWith(".json")) {
-        const text = await file.text();
-        await api("/api/upload/satellite", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            projectId: selectedProjectId,
-            ...JSON.parse(text),
-          }),
-        });
-      } else {
-        const formData = new FormData();
-        formData.append("projectId", selectedProjectId);
-        formData.append("file", file);
-
-        await api("/api/upload/satellite", {
-          method: "POST",
-          body: formData,
-        });
-      }
-
-      await loadProject(selectedProjectId);
-      setInfo("Satellite payload uploaded");
-    } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const runAnalysis = async () => {
-    if (!selectedProjectId) return;
-
-    try {
-      setError("");
-      setBusyKey("analyze");
-
-      const response = await api<{ success: boolean; analysis: AnalysisPayload }>(
-        "/api/analyze",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ projectId: selectedProjectId }),
-        }
-      );
-
-      setAnalysis(response.analysis);
-      setSelectedWardName(response.analysis?.wardScores?.[0]?.wardName || "");
-      await loadProject(selectedProjectId);
-      setInfo("Analysis completed");
-    } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const buildReport = async () => {
-    if (!selectedProjectId) return;
-
-    try {
-      setError("");
-      setBusyKey("report");
-
-      const response = await api<{ success: boolean; report: ReportPayload }>("/api/report", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          projectId: selectedProjectId,
-        }),
-      });
-
-      setReport(response.report);
-      await loadProject(selectedProjectId);
-      setInfo("Report generated");
-    } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const runSimulation = async (improvements: Record<string, number>) => {
-    if (!selectedProjectId || !selectedWard?.wardName) return;
-
-    try {
-      setError("");
-      setBusyKey("simulate");
-
-      const response = await api<{ success: boolean; simulation: SimulationPayload }>(
-        "/api/simulate",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            projectId: selectedProjectId,
-            wardName: selectedWard.wardName,
-            improvements,
-          }),
-        }
-      );
-
-      setSimulation(response.simulation);
-      setInfo("Simulation generated");
-    } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const showEmptyState = !projects.length && !selectedProjectId && !busyKey;
-
   return (
-    <main className="min-h-screen px-4 py-4 md:px-6 md:py-6 xl:px-8">
-      <div className="mx-auto max-w-[1680px] space-y-5">
-        <WorkspaceHeader
-          projects={projects}
-          selectedProjectId={selectedProjectId}
-          busyKey={busyKey}
-          onSelectProject={setSelectedProjectId}
-          onCreateBlankProject={createBlankProject}
-          onCreateDemoProject={createDemoProject}
-          onRefreshProjects={() => loadProjects(selectedProjectId)}
-        />
-
-        <ProjectSummaryBar project={project} analysis={analysis} />
-
-        {error ? (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-[28px] border border-rose-300/20 bg-rose-500/10 p-4 text-sm text-rose-100"
-          >
-            {error}
-          </motion.div>
-        ) : null}
-
-        <div className="rounded-[28px] border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-slate-200">
-          <span className="font-semibold text-white">Workspace status:</span> {info}
-          {busyKey ? (
-            <span className="ml-2 text-cyan-200">· {busyKey.replace(/-/g, " ")}</span>
-          ) : null}
+    <main className="relative h-screen w-screen overflow-hidden">
+      {error ? (
+        <div className="absolute left-1/2 top-4 z-[900] -translate-x-1/2 rounded-2xl border border-rose-300/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100 backdrop-blur-xl">
+          {error}
         </div>
+      ) : null}
 
-        {showEmptyState ? (
-          <EmptyWorkspaceState
-            onCreateBlankProject={createBlankProject}
-            onCreateDemoProject={createDemoProject}
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-            <div className="space-y-5 xl:col-span-3">
-              <GlassCard
-                title="Ingestion Controls"
-                subtitle="Upload data, analyze results, and keep the workspace synced."
-              >
-                <UploadDataPanel
-                  projectId={selectedProjectId}
-                  busyKey={busyKey}
-                  onSurveyUpload={uploadSurvey}
-                  onBoundaryUpload={uploadBoundary}
-                  onSatelliteUpload={uploadSatellite}
-                  onAnalyze={runAnalysis}
-                  onGenerateReport={buildReport}
-                  onRefreshCurrent={() => selectedProjectId && loadProject(selectedProjectId)}
-                />
-              </GlassCard>
+      <InteractiveMapPanel
+        boundaryGeoJson={project?.boundary?.geojson || null}
+        analysis={analysis}
+        selectedWardName={selectedWardName}
+        onSelectWard={(wardName) => {
+          setSelectedWardName(wardName);
+          setSelectedUnitName(wardName);
+        }}
+        searchHighlightGeoJson={effectiveSearchHighlightGeoJson}
+        selectedUnitName={selectedUnitName}
+      />
 
-              <GlassCard
-                title="Readiness Checks"
-                subtitle="Judge-friendly proof that the pipeline is end-to-end."
-              >
-                <DataReadinessPanel project={project} analysis={analysis} />
-              </GlassCard>
+      <LocationSearchPanel
+        searchQuery={searchQuery}
+        onChangeSearchQuery={setSearchQuery}
+        onSearch={searchLocation}
+        selectedLabel={selectedBoundaryLabel}
+        unitOptions={unitOptions}
+        selectedUnitName={selectedUnitName}
+        onSelectUnitName={setSelectedUnitName}
+      />
 
-              <BenchmarkPanel project={project} analysis={analysis} />
-            </div>
+      <WorkspaceDock projectId={selectedProjectId} />
 
-            <div className="space-y-5 xl:col-span-5">
-              <ScoreOverviewGrid analysis={analysis} />
-              <InteractiveMapPanel
-                boundaryGeoJson={project?.boundary?.geojson || null}
-                analysis={analysis}
-                selectedWardName={selectedWardName}
-                onSelectWard={(wardName) => {
-                  setSelectedWardName(wardName);
-                  setSimulation(null);
-                }}
-              />
-            </div>
-
-            <div className="space-y-5 xl:col-span-4">
-              <WardDetailsPanel ward={selectedWard} analysis={analysis} />
-              <PriorityInterventionsPanel analysis={analysis} />
-              <InterventionSimulatorPanel
-                ward={selectedWard}
-                busyKey={busyKey}
-                simulation={simulation}
-                onSimulate={runSimulation}
-              />
-              <ReportExportPanel report={report} />
-            </div>
-          </div>
-        )}
-      </div>
+      {busyKey ? (
+        <div className="absolute bottom-4 left-4 z-[800] rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 text-sm text-slate-200 backdrop-blur-2xl">
+          Working: {busyKey.replace(/-/g, " ")}
+        </div>
+      ) : null}
     </main>
   );
 }

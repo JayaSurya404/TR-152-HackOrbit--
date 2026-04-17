@@ -1,5 +1,4 @@
 import dynamic from "next/dynamic";
-import GlassCard from "@/components/ui/GlassCard";
 import { AnalysisPayload, GeoFeatureCollection } from "@/types/workspace";
 
 const InteractiveMapClient = dynamic(
@@ -7,8 +6,8 @@ const InteractiveMapClient = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-[560px] items-center justify-center rounded-[24px] border border-white/10 bg-slate-950/30 text-sm text-slate-300">
-        Loading interactive map...
+      <div className="flex h-screen items-center justify-center bg-slate-950/30 text-sm text-slate-300">
+        Loading full map workspace...
       </div>
     ),
   }
@@ -19,6 +18,9 @@ type InteractiveMapPanelProps = {
   analysis: AnalysisPayload | null;
   selectedWardName: string;
   onSelectWard: (wardName: string) => void;
+  searchHighlightGeoJson?: GeoFeatureCollection | null;
+  selectedUnitName?: string;
+  adminScope?: "overall" | "ward" | "cluster";
 };
 
 export default function InteractiveMapPanel({
@@ -26,20 +28,21 @@ export default function InteractiveMapPanel({
   analysis,
   selectedWardName,
   onSelectWard,
+  searchHighlightGeoJson,
+  selectedUnitName,
+  adminScope = "overall",
 }: InteractiveMapPanelProps) {
   return (
-    <GlassCard
-      title="Gap Intelligence Map"
-      subtitle="Annotated settlement map with gap overlays, 5 service layers, and base-map switching."
-    >
-      <div className="h-[560px]">
-        <InteractiveMapClient
-          boundaryGeoJson={boundaryGeoJson || null}
-          analysis={analysis}
-          selectedWardName={selectedWardName}
-          onSelectWard={onSelectWard}
-        />
-      </div>
-    </GlassCard>
+    <div className="h-screen w-screen overflow-hidden">
+      <InteractiveMapClient
+        boundaryGeoJson={boundaryGeoJson || null}
+        analysis={analysis}
+        selectedWardName={selectedWardName}
+        onSelectWard={onSelectWard}
+        searchHighlightGeoJson={searchHighlightGeoJson || null}
+        selectedUnitName={selectedUnitName || ""}
+        adminScope={adminScope}
+      />
+    </div>
   );
 }

@@ -1,6 +1,6 @@
-import mongoose, { Schema, model, models } from "mongoose";
+import { Schema, model, models } from "mongoose";
 
-const AnalysisSchema = new Schema(
+const ReportSchema = new Schema(
   {
     projectId: {
       type: Schema.Types.ObjectId,
@@ -8,18 +8,51 @@ const AnalysisSchema = new Schema(
       required: true,
       index: true,
     },
-    projectName: { type: String, required: true },
-    benchmarkProfile: { type: String, required: true },
-    benchmarkLabel: { type: String, required: true },
-    globalSummary: { type: Schema.Types.Mixed, required: true },
-    wardScores: { type: [Schema.Types.Mixed], default: [] },
-    priorityInterventions: { type: [Schema.Types.Mixed], default: [] },
-    insights: { type: Schema.Types.Mixed, default: null },
+    analysisId: {
+      type: Schema.Types.ObjectId,
+      ref: "Analysis",
+      default: null,
+    },
+    title: {
+      type: String,
+      default: "",
+      required: true,
+      trim: true,
+    },
+    executiveSummary: {
+      type: String,
+      default: "",
+    },
+    methodology: {
+      type: [String],
+      default: [],
+    },
+    keyStats: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
+    wardFindings: {
+      type: [Schema.Types.Mixed],
+      default: [],
+    },
+    priorityActions: {
+      type: [Schema.Types.Mixed],
+      default: [],
+    },
+    nextSteps: {
+      type: [String],
+      default: [],
+    },
+    generatedAt: {
+      type: String,
+      default: () => new Date().toISOString(),
+    },
   },
   {
     timestamps: true,
   }
 );
 
-const Analysis = models.Analysis || model("Analysis", AnalysisSchema);
-export default Analysis;
+const Report = models.Report || model("Report", ReportSchema);
+
+export default Report;
