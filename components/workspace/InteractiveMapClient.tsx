@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   GeoJSON,
   MapContainer,
@@ -8,9 +8,10 @@ import {
   ZoomControl,
   useMap,
 } from "react-leaflet";
-import L, { LatLngBoundsExpression } from "leaflet";
+import L, { type LatLngBoundsExpression, type PathOptions } from "leaflet";
 import { Layers3 } from "lucide-react";
-import { AnalysisPayload, GeoFeatureCollection } from "@/types/workspace";
+
+import type { AnalysisPayload, GeoFeatureCollection } from "@/types/workspace";
 import { MAP_LAYER_OPTIONS } from "@/lib/constants";
 
 type InteractiveMapClientProps = {
@@ -22,12 +23,21 @@ type InteractiveMapClientProps = {
   selectedUnitName: string;
 };
 
-type MetricMode = "overall" | "water" | "sanitation" | "electricity" | "road";
+type MetricMode =
+  | "overall"
+  | "water"
+  | "sanitation"
+  | "electricity"
+  | "road";
+
 type BaseMode = "satellite" | "street";
 
-function getGeometryBounds(geojson: GeoFeatureCollection): LatLngBoundsExpression | null {
+function getGeometryBounds(
+  geojson: GeoFeatureCollection
+): LatLngBoundsExpression | null {
   const layer = L.geoJSON(geojson as any);
   const bounds = layer.getBounds();
+
   if (!bounds.isValid()) return null;
   return bounds;
 }
@@ -47,17 +57,18 @@ function FitPriority({
 
   const bounds = useMemo(() => {
     if (searchGeoJson?.features?.length) return getGeometryBounds(searchGeoJson);
-    if (projectGeoJson?.features?.length) return getGeometryBounds(projectGeoJson);
+    if (projectGeoJson?.features?.length)
+      return getGeometryBounds(projectGeoJson);
     return null;
   }, [searchGeoJson, projectGeoJson]);
 
   useEffect(() => {
-    if (bounds) {
-      map.fitBounds(bounds, {
-        padding: [30, 30],
-        maxZoom: 14,
-      });
-    }
+    if (!bounds) return;
+
+    map.fitBounds(bounds, {
+      padding: [30, 30],
+      maxZoom: 14,
+    });
   }, [bounds, map]);
 
   return null;
@@ -73,16 +84,21 @@ function getColor(score?: number | null) {
 
 function getMetricValue(ward: any, mode: MetricMode) {
   if (!ward) return null;
+
   if (mode === "overall") return ward.priorityScore ?? null;
   if (mode === "water") return ward.gaps?.water ?? null;
   if (mode === "sanitation") return ward.gaps?.sanitation ?? null;
   if (mode === "electricity") return ward.gaps?.electricity ?? null;
   if (mode === "road") return ward.gaps?.road ?? null;
+
   return ward.priorityScore ?? null;
 }
 
 function getMetricLabel(mode: MetricMode) {
-  return MAP_LAYER_OPTIONS.find((item) => item.id === mode)?.label || "Overall Priority";
+  return (
+    MAP_LAYER_OPTIONS.find((item) => item.id === mode)?.label ||
+    "Overall Priority"
+  );
 }
 
 function getFeatureName(feature: any) {
@@ -103,16 +119,44 @@ export default function InteractiveMapClient({
   searchHighlightGeoJson,
   selectedUnitName,
 }: InteractiveMapClientProps) {
+  const geoJsonRef = useRef<L.GeoJSON<any> | null>(null);
+
   const [metricMode, setMetricMode] = useState<MetricMode>("overall");
   const [baseMode, setBaseMode] = useState<BaseMode>("street");
 
   const wardMap = useMemo(() => {
     const map = new Map<string, any>();
+
     for (const ward of analysis?.wardScores || []) {
       map.set(String(ward.wardName || "").toLowerCase(), ward);
     }
+
     return map;
   }, [analysis]);
+
+  const getFeatureStyle = (feature: any): PathOptions => {
+    const featureName = getFeatureName(feature);
+    const ward = wardMap.get(featureName.toLowerCase());
+    const score = getMetricValue(ward, metricMode);
+
+    const isSelectedByWard =
+      !!selectedWardName &&
+      featureName.toLowerCase() === selectedWardName.toLowerCase();
+
+    const isSelectedByFilter =
+      !!selectedUnitName &&
+      featureName.toLowerCase() === selectedUnitName.toLowerCase();
+
+    const isFocused = isSelectedByWard || isSelectedByFilter;
+    const faded = Boolean(selectedUnitName) && !isFocused;
+
+    return {
+      color: isFocused ? "#ffffff" : "rgba(255,255,255,0.30)",
+      weight: isFocused ? 3.5 : 1.2,
+      fillColor: getColor(score),
+      fillOpacity: faded ? 0.05 : isFocused ? 0.82 : 0.48,
+    };
+  };
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -131,14 +175,14 @@ export default function InteractiveMapClient({
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             />
             <TileLayer
-              attribution='&copy; OpenStreetMap contributors'
+              attribution="&copy; OpenStreetMap contributors"
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               opacity={0.14}
             />
           </>
         ) : (
           <TileLayer
-            attribution='&copy; OpenStreetMap contributors'
+            attribution="&copy; OpenStreetMap contributors"
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
         )}
@@ -150,6 +194,7 @@ export default function InteractiveMapClient({
 
         {searchHighlightGeoJson?.features?.length ? (
           <GeoJSON
+            key={`search-${selectedUnitName || "none"}`}
             data={searchHighlightGeoJson as any}
             style={() => ({
               color: "#22d3ee",
@@ -162,72 +207,63 @@ export default function InteractiveMapClient({
 
         {boundaryGeoJson?.features?.length ? (
           <GeoJSON
+            key={`boundary-${metricMode}-${selectedWardName || "none"}-${
+              selectedUnitName || "none"
+            }`}
+            ref={geoJsonRef}
             data={boundaryGeoJson as any}
-            style={(feature: any) => {
-              const featureName = getFeatureName(feature);
-              const ward = wardMap.get(featureName.toLowerCase());
-              const score = getMetricValue(ward, metricMode);
-
-              const isSelectedByWard =
-                selectedWardName &&
-                featureName.toLowerCase() === selectedWardName.toLowerCase();
-
-              const isSelectedByFilter =
-                selectedUnitName &&
-                featureName.toLowerCase() === selectedUnitName.toLowerCase();
-
-              const isFocused = isSelectedByWard || isSelectedByFilter;
-              const faded = Boolean(selectedUnitName) && !isFocused;
-
-              return {
-                color: isFocused ? "#ffffff" : "rgba(255,255,255,0.30)",
-                weight: isFocused ? 3.5 : 1.2,
-                fillColor: getColor(score),
-                fillOpacity: faded ? 0.05 : isFocused ? 0.82 : 0.48,
-              };
-            }}
-            onEachFeature={(feature: any, layer) => {
+            style={(feature: any) => getFeatureStyle(feature)}
+            onEachFeature={(feature: any, layer: L.Layer) => {
               const featureName = getFeatureName(feature);
               const ward = wardMap.get(featureName.toLowerCase());
 
               layer.on({
-  click: () => onSelectWard(featureName),
-  mouseover: () => {
-    if (isPathLayer(layer)) {
-      layer.setStyle({ weight: 3.5, fillOpacity: 0.84 });
-    }
-  },
-  mouseout: () => {
-    const isSelectedByWard =
-      selectedWardName &&
-      featureName &&
-      selectedWardName.toLowerCase() === featureName.toLowerCase();
+                click: () => onSelectWard(featureName),
+                mouseover: () => {
+                  if (!isPathLayer(layer)) return;
 
-    if (isPathLayer(layer)) {
-      layer.setStyle(
-        getFeatureStyle(feature, Boolean(isSelectedByWard))
-      );
-    }
-  },
-});
+                  layer.setStyle({
+                    weight: 3.5,
+                    fillOpacity: 0.84,
+                  });
+                },
+                mouseout: () => {
+                  if (!isPathLayer(layer)) return;
+
+                  if (geoJsonRef.current) {
+                    geoJsonRef.current.resetStyle(layer);
+                    return;
+                  }
+
+                  layer.setStyle(getFeatureStyle(feature));
+                },
+              });
 
               const metricValue = getMetricValue(ward, metricMode);
 
-              layer.bindTooltip(
-                `
-                  <div class="map-tooltip-card">
-                    <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${featureName}</div>
-                    <div style="font-size:12px;opacity:0.92;">${getMetricLabel(metricMode)}: ${metricValue ?? "--"}</div>
-                    <div style="font-size:12px;opacity:0.92;">Severity: ${ward?.severity ?? "--"}</div>
-                    <div style="font-size:12px;opacity:0.92;">Rows: ${ward?.rowCount ?? 0}</div>
-                  </div>
-                `,
-                {
-                  sticky: true,
-                  direction: "top",
-                  opacity: 1,
-                }
-              );
+              if ("bindTooltip" in layer && typeof layer.bindTooltip === "function") {
+                layer.bindTooltip(
+                  `
+                    <div class="map-tooltip-card">
+                      <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${featureName}</div>
+                      <div style="font-size:12px;opacity:0.92;">${getMetricLabel(
+                        metricMode
+                      )}: ${metricValue ?? "--"}</div>
+                      <div style="font-size:12px;opacity:0.92;">Severity: ${
+                        ward?.severity ?? "--"
+                      }</div>
+                      <div style="font-size:12px;opacity:0.92;">Rows: ${
+                        ward?.rowCount ?? 0
+                      }</div>
+                    </div>
+                  `,
+                  {
+                    sticky: true,
+                    direction: "top",
+                    opacity: 1,
+                  }
+                );
+              }
             }}
           />
         ) : null}
