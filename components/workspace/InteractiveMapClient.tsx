@@ -22,8 +22,7 @@ type MetricMode =
   | "road";
 
 type BaseMode = "satellite" | "street";
-type AdminScope = "ward" | "village" | "overall";
-
+type AdminScope = "ward" | "cluster" | "overall";
 type InteractiveMapClientProps = {
   boundaryGeoJson: GeoFeatureCollection | null;
   analysis: AnalysisPayload | null;
